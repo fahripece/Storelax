@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Checked Out · Storelax{% endblock %}
+{% block content %}
+<div class="topbar">
+  <span class="topbar-title">Checked Out</span>
+  <span class="topbar-sub" id="coCount">{{ items|length }} item{{ 's' if items|length != 1 else '' }}</span>
+  <div class="topbar-right">
+    <input id="coSearch" class="input" style="width:220px" placeholder="Search name, tech, job…" oninput="filterCO(this.value)">
+  </div>
+</div>
+
+<div style="flex:1;overflow-y:auto;padding:20px 22px">
+
+{% if not items %}
+<div style="text-align:center;padding:60px 20px;color:#94a3b8">
+  <div style="font-size:40px;margin-bottom:12px">📦</div>
+  <div style="font-size:16px;font-weight:500;margin-bottom:6px">Nothing checked out</div>
+  <div style="font-size:13px">All items are currently in stock.</div>
+</div>
+{% else %}
+<div class="table-wrap">
+  <table>
+    <thead><tr>
+      <th>Item</th>
+      <th>Category</th>
+      <th>Serial</th>
+      <th>Shelf</th>
+      <th>Checked Out By</th>
+      <th>Date Out</th>
+      <th>Job / Customer</th>
+      <th></th>
+    </tr></thead>
+    <tbody id="coBody">
+      {% for item in items %}
+      <tr data-search="{{ item.name|lower }} {{ item.checkout_by|lower if item.checkout_by }} {{ item.job_ref|lower if item.job_ref }}">
+        <td>
+          <div style="font-weight:500">{{ item.name }}</div>
+          {% if item.model %}<div style="font-size:11px;color:#aaa;font-family:monospace">{{ item.model }}</div>{% endif %}
+        </td>
+        <td>
+          {% if item.category %}
+          <span class="tag" style="background:{{ item.color }}18;color:{{ item.color }}">{{ item.category }}</span>
+          {% else %}<span style="color:#ccc">—</span>{% endif %}
+        </td>
+        <td><span class="mono" style="font-size:12px">{{ item.serial or item.sku or '—' }}</span></td>
+        <td>{% if item.shelf %}<span class="shelf">{{ item.shelf }}</span>{% else %}—{% endif %}</td>
+        <td><strong>{{ item.checkout_by or '—' }}</strong></td>
+        <td style="font-size:12px;color:#666">{{ item.checkout_date or '—' }}</td>
+        <td style="font-size:12px;color:#475569;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ item.job_ref or '—' }}</td>
+        <td>
+          <button class="btn btn-success btn-sm" onclick="checkin({{ item.id }}, '{{ item.name|replace("'","\\'")|e }}')">📥 Check In</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+</div>
+
+<script>
+function filterCO(q){
+  q=q.toLowerCase();
+  document.querySelectorAll('#coBody tr').forEach(row=>{
+    row.style.display=!q||row.dataset.search.includes(q)?'':'none';
+  });
+}
+async function checkin(id, name){
+  if(!confirm(`Check in "${name}"?`))return;
+  const res=await fetch('/api/checkin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})}).then(r=>r.json());
+  if(res.ok){location.reload();}
+  else alert(res.msg||'Error checking in');
+}
+</script>
+{% endblock %}

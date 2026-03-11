@@ -1,0 +1,525 @@
+{% extends "base.html" %}
+{% block title %}Admin · Storelax{% endblock %}
+{% block content %}
+<div class="topbar">
+  <span class="topbar-title">Admin</span>
+  <span class="topbar-sub">Users, Permissions &amp; Product Types</span>
+</div>
+<div style="flex:1;overflow-y:auto;padding:22px 24px">
+
+<!-- USERS -->
+<div class="card" style="margin-bottom:20px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+    <div>
+      <div style="font-weight:600;font-size:15px">Users &amp; Permissions</div>
+      <div style="font-size:12px;color:#94a3b8;margin-top:1px">Control who can access Storelax and what they can do</div>
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="openAddUser()">+ Add User</button>
+  </div>
+
+  {% for u in users %}
+  <div class="user-row" id="userrow-{{ u.id }}">
+    <div class="user-summary" onclick="togglePerms({{ u.id }})">
+      <div style="display:flex;align-items:center;gap:10px;flex:1">
+        <div class="user-avatar">{{ u.username[0].upper() }}</div>
+        <div>
+          <div style="font-weight:600;font-size:14px">{{ u.username }}</div>
+          <div style="font-size:11px;margin-top:2px;display:flex;align-items:center;gap:6px">
+            <span class="tag" style="font-size:10px;padding:1px 7px;background:{% if u.role=='admin' %}#eff6ff;color:#1d4ed8{% else %}#f0fdf4;color:#15803d{% endif %}">{{ u.role }}</span>
+            {% if u.role == 'admin' %}
+              <span style="color:#94a3b8">Full access · all permissions</span>
+            {% else %}
+              {% set pcount = u.perm_set | length %}
+              <span style="color:#475569" id="permcount-{{ u.id }}">{{ pcount }} permission{{ 's' if pcount != 1 else '' }} granted</span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        {% if u.role != 'admin' %}
+        <span style="font-size:11px;color:#94a3b8;margin-right:4px" id="permtoggle-{{ u.id }}">▸ Permissions</span>
+        {% endif %}
+        <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();openResetPw({{ u.id }},'{{ u.username }}')">Reset PW</button>
+        <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteUser({{ u.id }},'{{ u.username }}')">Delete</button>
+      </div>
+    </div>
+
+    {% if u.role != 'admin' %}
+    <div class="perm-panel" id="permpanel-{{ u.id }}" style="display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <div style="font-size:12px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:.5px">Permissions for {{ u.username }}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <span style="font-size:11px;color:#94a3b8;align-self:center">Presets:</span>
+          <button class="btn btn-secondary btn-sm" onclick="setPreset({{ u.id }},'readonly')">Read Only</button>
+          <button class="btn btn-secondary btn-sm" onclick="setPreset({{ u.id }},'tech')">Field Tech</button>
+          <button class="btn btn-secondary btn-sm" onclick="setPreset({{ u.id }},'worker')">Worker</button>
+          <button class="btn btn-secondary btn-sm" onclick="setPreset({{ u.id }},'manager')">Manager</button>
+          <button class="btn btn-secondary btn-sm" onclick="setPreset({{ u.id }},'full')">Full Access</button>
+        </div>
+      </div>
+      <div class="perm-grid">
+        {% for pkey, plabel, pdesc in all_permissions %}
+        <label class="perm-item {% if pkey in u.perm_set %}perm-on{% endif %}" id="permlabel-{{ u.id }}-{{ pkey }}">
+          <input type="checkbox" class="perm-cb" data-uid="{{ u.id }}" data-perm="{{ pkey }}"
+            {% if pkey in u.perm_set %}checked{% endif %}
+            onchange="permChanged({{ u.id }})">
+          <div class="perm-check">✓</div>
+          <div style="min-width:0">
+            <div class="perm-label">{{ plabel }}</div>
+            <div class="perm-desc">{{ pdesc }}</div>
+          </div>
+        </label>
+        {% endfor %}
+      </div>
+      <div style="display:flex;gap:8px;margin-top:14px;align-items:center">
+        <button class="btn btn-primary btn-sm" onclick="savePerms({{ u.id }})">💾 Save Permissions</button>
+        <span id="permsaved-{{ u.id }}" style="font-size:12px;color:#15803d;display:none">✓ Saved</span>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+<!-- PRODUCT TYPES -->
+<div class="card" style="margin-bottom:20px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+    <div>
+      <div style="font-weight:600;font-size:15px">Product Types</div>
+      <div style="font-size:12px;color:#94a3b8;margin-top:1px">Define field requirements per type</div>
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="openAddType()">+ Add Type</button>
+  </div>
+  <table>
+    <thead><tr>
+      <th>Name</th><th>Serial</th><th>SKU</th><th>Qty Tracked</th><th>Scan on Checkout</th><th></th>
+    </tr></thead>
+    <tbody id="ptypeTable">
+      {% for pt in product_types %}
+      <tr>
+        <td style="font-weight:500">{{ pt.name }}</td>
+        <td>{% if pt.serial_required==1 %}<span class="tag tag-out">Required</span>{% elif pt.serial_required==0 %}<span style="color:#94a3b8;font-size:12px">Optional</span>{% else %}<span style="color:#ccc;font-size:12px">Hidden</span>{% endif %}</td>
+        <td>{% if pt.sku_required==1 %}<span class="tag tag-out">Required</span>{% elif pt.sku_required==0 %}<span style="color:#94a3b8;font-size:12px">Optional</span>{% else %}<span style="color:#ccc;font-size:12px">Hidden</span>{% endif %}</td>
+        <td>{{ 'Yes' if pt.qty_tracked else 'No' }}</td>
+        <td>{% if pt.require_scan_checkout %}<span class="tag" style="background:#fef3c7;color:#b45309">Required</span>{% else %}<span style="color:#94a3b8;font-size:12px">No</span>{% endif %}</td>
+        <td style="text-align:right;display:flex;gap:6px;justify-content:flex-end">
+          <button class="btn btn-secondary btn-sm" onclick="editType({{pt.id}},'{{pt.name}}',{{pt.serial_required}},{{pt.sku_required}},{{pt.qty_tracked}},{{pt.require_scan_checkout or 0}})">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteType({{pt.id}},'{{pt.name}}')">Delete</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div style="margin-top:12px;font-size:12px;color:#94a3b8">
+    <strong>Serial/SKU fields:</strong> Required = must fill in | Optional = can leave blank | Hidden = field not shown.<br>
+    <strong>Qty Tracked:</strong> Items of this type track quantity instead of individual checkout/checkin.<br>
+    <strong>Scan on Checkout:</strong> Technician must physically scan the item barcode before checkout is allowed.
+  </div>
+</div>
+
+<!-- Change own password -->
+<div class="card" style="max-width:420px">
+  <div style="font-weight:600;font-size:14px;margin-bottom:14px">Change Your Password</div>
+  <div class="field"><label class="label">Current Password</label><input class="input" id="pw-old" type="password"></div>
+  <div class="field"><label class="label">New Password</label><input class="input" id="pw-new" type="password"></div>
+  <button class="btn btn-primary btn-sm" onclick="changeOwnPw()">Update Password</button>
+</div>
+
+<!-- COMPANIES -->
+<div class="card" style="margin-bottom:20px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+    <div>
+      <div style="font-weight:600;font-size:15px">Companies</div>
+      <div style="font-size:12px;color:#94a3b8;margin-top:1px">Vendors and suppliers for the purchase Company dropdown</div>
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="openAddCompany()">+ Add Company</button>
+  </div>
+  <table>
+    <thead><tr><th>Name</th><th>Notes</th><th></th></tr></thead>
+    <tbody>
+      {% for co in companies %}
+      <tr>
+        <td style="font-weight:500">{{ co.name }}</td>
+        <td style="color:#888;font-size:12px">{{ co.notes or '—' }}</td>
+        <td style="text-align:right">
+          <button class="btn btn-danger btn-sm" onclick="deleteCompany({{ co.id }},'{{ co.name }}')">Delete</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- CATEGORY FIELD PROFILES -->
+<div class="card" style="margin-bottom:20px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+    <div>
+      <div style="font-weight:600;font-size:15px">Category Field Profiles</div>
+      <div style="font-size:12px;color:#94a3b8;margin-top:1px">Define custom required fields that appear when adding an item in a given category</div>
+    </div>
+  </div>
+  <div style="margin-top:14px">
+    <div class="field" style="max-width:300px">
+      <label class="label">Select Category to Configure</label>
+      <select class="select" id="cfp-cat-select" onchange="loadCatFields()">
+        <option value="">— Pick a category —</option>
+        {% for cat in categories %}<option value="{{ cat.id }}">{{ cat.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div id="cfp-editor" style="display:none">
+      <div style="background:#f8f9ff;border:1px solid #e0e7ff;border-radius:8px;padding:14px 16px;margin-bottom:14px;font-size:12.5px;color:#4338ca">
+        💡 Fields defined here will appear as required inputs when adding/editing items in this category. Use simple key names (no spaces).
+      </div>
+      <div id="cfp-fields-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
+      <button class="btn btn-secondary btn-sm" onclick="addCfpRow()">+ Add Field</button>
+      <button class="btn btn-primary btn-sm" style="margin-left:8px" onclick="saveCatFields()">Save Fields</button>
+    </div>
+  </div>
+</div>
+
+</div><!-- end scroll area -->
+
+<!-- ADD USER MODAL -->
+<div class="overlay" id="userModal">
+  <div class="modal" style="width:540px;max-height:90vh;overflow-y:auto">
+    <div class="modal-header" style="position:sticky;top:0;background:#fff;z-index:1">
+      <div class="modal-title">Add User</div>
+      <button class="modal-close" onclick="closeModal('userModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field"><label class="label">Username</label><input class="input" id="u-username" autocomplete="off"></div>
+      <div class="field"><label class="label">Password</label><input class="input" id="u-password" type="password" autocomplete="new-password"></div>
+      <div class="field"><label class="label">Role</label>
+        <select class="select" id="u-role" onchange="onNewUserRoleChange()">
+          <option value="worker">Worker</option>
+          <option value="admin">Admin (full access — all permissions)</option>
+        </select>
+      </div>
+      <div id="new-user-perms" style="margin-top:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:6px">
+          <div style="font-size:12px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:.5px">Starting Permissions</div>
+          <div style="display:flex;gap:5px;flex-wrap:wrap">
+            <span style="font-size:11px;color:#94a3b8;align-self:center">Preset:</span>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="setNewUserPreset('readonly')">Read Only</button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="setNewUserPreset('tech')">Field Tech</button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="setNewUserPreset('worker')">Worker</button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="setNewUserPreset('manager')">Manager</button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="setNewUserPreset('full')">Full</button>
+          </div>
+        </div>
+        <div class="perm-grid" id="new-user-perm-grid">
+          {% for pkey, plabel, pdesc in all_permissions %}
+          <label class="perm-item" id="newpermlabel-{{ pkey }}">
+            <input type="checkbox" class="perm-cb" id="newperm-{{ pkey }}" value="{{ pkey }}" onchange="newPermChanged('{{ pkey }}')">
+            <div class="perm-check">✓</div>
+            <div style="min-width:0">
+              <div class="perm-label">{{ plabel }}</div>
+              <div class="perm-desc">{{ pdesc }}</div>
+            </div>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer" style="position:sticky;bottom:0;background:#fff">
+      <button class="btn btn-secondary" onclick="closeModal('userModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveUser()">Add User</button>
+    </div>
+  </div>
+</div>
+
+<!-- RESET PASSWORD MODAL -->
+<div class="overlay" id="resetPwModal">
+  <div class="modal modal-sm">
+    <div class="modal-header"><div class="modal-title">Reset Password</div><button class="modal-close" onclick="closeModal('resetPwModal')">✕</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="resetPwUserId">
+      <div style="font-size:13px;color:#475569;margin-bottom:14px">Resetting password for <strong id="resetPwUsername"></strong></div>
+      <div class="field"><label class="label">New Password</label><input class="input" id="reset-pw" type="password" autocomplete="new-password"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('resetPwModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmResetPw()">Reset</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD/EDIT TYPE MODAL -->
+<div class="overlay" id="typeModal">
+  <div class="modal modal-sm">
+    <div class="modal-header"><div class="modal-title" id="typeModalTitle">Add Product Type</div><button class="modal-close" onclick="closeModal('typeModal')">✕</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="editTypeId">
+      <div class="field"><label class="label">Type Name *</label><input class="input" id="pt-name" placeholder="e.g. Serialized Asset"></div>
+      <div class="field"><label class="label">Serial Number</label>
+        <select class="select" id="pt-serial">
+          <option value="0">Optional</option><option value="1">Required</option><option value="-1">Hidden</option>
+        </select>
+      </div>
+      <div class="field"><label class="label">SKU</label>
+        <select class="select" id="pt-sku">
+          <option value="0">Optional</option><option value="1">Required</option><option value="-1">Hidden</option>
+        </select>
+      </div>
+      <div class="field"><label class="label">Quantity Tracked</label>
+        <select class="select" id="pt-qty">
+          <option value="0">No — individual checkout/checkin</option>
+          <option value="1">Yes — track by quantity</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="label" style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="pt-scan" style="width:15px;height:15px">
+          Require Barcode Scan on Checkout
+        </label>
+        <div style="font-size:11.5px;color:#94a3b8;margin-top:4px">When enabled, technicians must physically scan the item's barcode before checkout. Can be overridden per individual item.</div>
+      </div>
+      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:7px;padding:10px 12px;font-size:12px;color:#1e40af">
+        💡 Low stock thresholds are set <strong>per item</strong>, not per type. Edit any item to set its threshold.
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('typeModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveType()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- COMPANY MODAL -->
+<div class="overlay" id="companyModal">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <div class="modal-title">Add Company</div>
+      <button class="modal-close" onclick="closeModal('companyModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field"><label class="label">Company Name *</label><input class="input" id="co-name" placeholder="e.g. Amazon, CDW, B&H Photo"></div>
+      <div class="field"><label class="label">Notes</label><input class="input" id="co-notes" placeholder="Optional"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('companyModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveCompany()">Add Company</button>
+    </div>
+  </div>
+</div>
+
+<style>
+.user-row{border:1px solid #e5e3de;border-radius:10px;margin-bottom:10px;overflow:hidden;background:#fff}
+.user-summary{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;cursor:pointer;transition:background .15s;gap:10px}
+.user-summary:hover{background:#fafaf9}
+.user-avatar{width:36px;height:36px;border-radius:50%;background:#0f172a;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0;font-family:'IBM Plex Mono',monospace}
+.perm-panel{padding:16px 20px;border-top:1px solid #e5e3de;background:#fafaf9}
+.perm-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.perm-item{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1.5px solid #e5e3de;border-radius:8px;cursor:pointer;transition:all .15s;background:#fff;user-select:none}
+.perm-item:hover{border-color:#94a3b8;background:#f8f8f7}
+.perm-item.perm-on{border-color:#0f172a;background:#f0f9ff}
+.perm-item input[type=checkbox]{display:none}
+.perm-check{width:18px;height:18px;border-radius:4px;border:2px solid #d1d5db;flex-shrink:0;margin-top:2px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:transparent;transition:all .15s;background:#fff}
+.perm-item.perm-on .perm-check{background:#0f172a;border-color:#0f172a;color:#fff}
+.perm-label{font-size:12.5px;font-weight:600;color:#0f172a;line-height:1.3}
+.perm-desc{font-size:11px;color:#94a3b8;margin-top:2px;line-height:1.4}
+@media(max-width:700px){.perm-grid{grid-template-columns:1fr}}
+</style>
+
+<script>
+const PRESETS = {
+  readonly: ['view_inventory'],
+  tech:     ['view_inventory','view_dashboard','checkout_checkin','qty_adjust'],
+  worker:   ['view_inventory','view_dashboard','view_audit','checkout_checkin','write_items','qty_adjust','sell_items'],
+  manager:  ['view_inventory','view_dashboard','view_audit','checkout_checkin','write_items','qty_adjust','sell_items','delete_items','import_export'],
+  full:     {{ perm_keys | tojson }},
+};
+
+function togglePerms(uid){
+  const panel=document.getElementById('permpanel-'+uid);
+  if(!panel)return;
+  const open=panel.style.display==='none';
+  panel.style.display=open?'block':'none';
+  const t=document.getElementById('permtoggle-'+uid);
+  if(t) t.textContent=(open?'▾':'▸')+' Permissions';
+}
+
+function permChanged(uid){
+  document.querySelectorAll('.perm-cb[data-uid="'+uid+'"]').forEach(cb=>{
+    cb.closest('.perm-item').classList.toggle('perm-on',cb.checked);
+  });
+}
+
+function setPreset(uid,preset){
+  const perms=new Set(PRESETS[preset]||[]);
+  document.querySelectorAll('.perm-cb[data-uid="'+uid+'"]').forEach(cb=>{
+    cb.checked=perms.has(cb.dataset.perm);
+    cb.closest('.perm-item').classList.toggle('perm-on',cb.checked);
+  });
+}
+
+async function savePerms(uid){
+  const perms=[];
+  document.querySelectorAll('.perm-cb[data-uid="'+uid+'"]:checked').forEach(cb=>perms.push(cb.dataset.perm));
+  const res=await api('/api/user/permissions',{id:uid,permissions:perms});
+  if(res.ok){
+    const s=document.getElementById('permsaved-'+uid);
+    s.style.display='inline';setTimeout(()=>s.style.display='none',2500);
+    const cnt=document.getElementById('permcount-'+uid);
+    if(cnt) cnt.textContent=perms.length+' permission'+(perms.length!==1?'s':'')+' granted';
+  } else toast(res.msg||'Error','err');
+}
+
+function newPermChanged(pkey){
+  const cb=document.getElementById('newperm-'+pkey);
+  document.getElementById('newpermlabel-'+pkey).classList.toggle('perm-on',cb.checked);
+}
+
+function setNewUserPreset(preset){
+  const perms=new Set(PRESETS[preset]||[]);
+  document.querySelectorAll('#new-user-perm-grid .perm-cb').forEach(cb=>{
+    cb.checked=perms.has(cb.value);
+    cb.closest('.perm-item').classList.toggle('perm-on',cb.checked);
+  });
+}
+
+function onNewUserRoleChange(){
+  document.getElementById('new-user-perms').style.display=
+    document.getElementById('u-role').value==='admin'?'none':'block';
+}
+
+function openAddUser(){
+  document.getElementById('u-username').value='';
+  document.getElementById('u-password').value='';
+  document.getElementById('u-role').value='worker';
+  document.getElementById('new-user-perms').style.display='block';
+  setNewUserPreset('worker'); // default: worker preset
+  openModal('userModal');
+}
+
+async function saveUser(){
+  const username=document.getElementById('u-username').value.trim();
+  const password=document.getElementById('u-password').value;
+  const role=document.getElementById('u-role').value;
+  if(!username||!password){toast('Username and password required','warn');return}
+  let perms=null;
+  if(role!=='admin'){
+    perms=[];
+    document.querySelectorAll('#new-user-perm-grid .perm-cb:checked').forEach(cb=>perms.push(cb.value));
+  }
+  const res=await api('/api/user/add',{username,password,role,permissions:perms});
+  if(res.ok){toast('User added ✓','ok');closeModal('userModal');location.reload();}
+  else toast(res.msg||'Error','err');
+}
+
+function openResetPw(id,name){
+  document.getElementById('resetPwUserId').value=id;
+  document.getElementById('resetPwUsername').textContent=name;
+  document.getElementById('reset-pw').value='';
+  openModal('resetPwModal');
+}
+async function confirmResetPw(){
+  const pw=document.getElementById('reset-pw').value;
+  if(!pw){toast('Enter new password','warn');return}
+  const res=await api('/api/user/password',{id:parseInt(document.getElementById('resetPwUserId').value),password:pw});
+  if(res.ok){toast('Password reset ✓','ok');closeModal('resetPwModal');}
+  else toast(res.msg||'Error','err');
+}
+async function deleteUser(id,name){
+  if(!confirm(`Delete user "${name}"?`))return;
+  const res=await api('/api/user/delete',{id});
+  if(res.ok){toast('User deleted','warn');location.reload();}
+  else toast(res.msg||'Error','err');
+}
+
+function openAddType(){document.getElementById('editTypeId').value='';document.getElementById('typeModalTitle').textContent='Add Product Type';document.getElementById('pt-name').value='';document.getElementById('pt-serial').value='0';document.getElementById('pt-sku').value='0';document.getElementById('pt-qty').value='0';document.getElementById('pt-scan').checked=false;openModal('typeModal');}
+function editType(id,name,sr,skur,qty,scan){document.getElementById('editTypeId').value=id;document.getElementById('typeModalTitle').textContent='Edit Product Type';document.getElementById('pt-name').value=name;document.getElementById('pt-serial').value=sr;document.getElementById('pt-sku').value=skur;document.getElementById('pt-qty').value=qty;document.getElementById('pt-scan').checked=!!scan;openModal('typeModal');}
+async function saveType(){
+  const name=document.getElementById('pt-name').value.trim();if(!name){toast('Name required','warn');return}
+  const id=document.getElementById('editTypeId').value;
+  const data={name,serial_required:parseInt(document.getElementById('pt-serial').value),sku_required:parseInt(document.getElementById('pt-sku').value),qty_tracked:parseInt(document.getElementById('pt-qty').value),require_scan_checkout:document.getElementById('pt-scan').checked?1:0};
+  if(id)data.id=parseInt(id);
+  const res=await api(id?'/api/product_type/edit':'/api/product_type/add',data);
+  if(res.ok){toast(id?'Type updated':'Type added','ok');closeModal('typeModal');location.reload();}
+  else toast(res.msg||'Error','err');
+}
+async function deleteType(id,name){
+  if(!confirm(`Delete product type "${name}"? Items using it will lose their type.`))return;
+  const res=await api('/api/product_type/delete',{id});
+  if(res.ok){toast('Type removed','warn');location.reload();}
+  else toast(res.msg||'Error','err');
+}
+function openAddCompany(){document.getElementById('co-name').value='';document.getElementById('co-notes').value='';openModal('companyModal');}
+async function saveCompany(){
+  const name=document.getElementById('co-name').value.trim();
+  if(!name){toast('Name required','warn');return;}
+  const res=await api('/api/company/add',{name,notes:document.getElementById('co-notes').value.trim()});
+  if(res.ok){toast('Company added ✓','ok');closeModal('companyModal');location.reload();}
+  else toast(res.msg||'Error','err');
+}
+async function deleteCompany(id,name){
+  if(!confirm(`Remove company "${name}"?`))return;
+  const res=await api('/api/company/delete',{id});
+  if(res.ok){toast('Company removed','warn');location.reload();}
+  else toast(res.msg||'Error','err');
+}
+
+// ── Category field profile editor ──
+async function loadCatFields(){
+  const catId=document.getElementById('cfp-cat-select').value;
+  if(!catId){document.getElementById('cfp-editor').style.display='none';return;}
+  document.getElementById('cfp-editor').style.display='';
+  const fields=await fetch('/api/category/fields?cat_id='+catId).then(r=>r.json());
+  const list=document.getElementById('cfp-fields-list');
+  list.innerHTML='';
+  if(fields.length===0){addCfpRow();}
+  else{fields.forEach(f=>addCfpRow(f));}
+}
+function addCfpRow(f){
+  const list=document.getElementById('cfp-fields-list');
+  const row=document.createElement('div');
+  row.style.cssText='display:grid;grid-template-columns:1fr 1fr 120px 80px 28px;gap:8px;align-items:center;background:#fafaf9;border:1px solid #e5e3de;border-radius:7px;padding:10px 12px';
+  row.innerHTML=`
+    <div><label style="font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:3px">Label *</label>
+    <input class="input" placeholder="e.g. Resolution" value="${f?.field_label||''}" style="font-size:12.5px"></div>
+    <div><label style="font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:3px">Placeholder</label>
+    <input class="input" placeholder="e.g. 4MP, 8MP" value="${f?.placeholder||''}" style="font-size:12.5px"></div>
+    <div><label style="font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase;display:block;margin-bottom:3px">Type</label>
+    <select class="select" style="font-size:12.5px">
+      <option value="text" ${f?.field_type==='text'?'selected':''}>Text</option>
+      <option value="number" ${f?.field_type==='number'?'selected':''}>Number</option>
+      <option value="checkbox" ${f?.field_type==='checkbox'?'selected':''}>Checkbox</option>
+      <option value="select" ${f?.field_type==='select'?'selected':''}>Dropdown</option>
+    </select></div>
+    <div style="padding-top:18px"><label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer"><input type="checkbox" ${f?.required?'checked':''} style="width:14px;height:14px"> Required</label></div>
+    <div style="padding-top:16px"><button onclick="this.closest('div[style]').remove()" style="background:none;border:none;cursor:pointer;color:#b91c1c;font-size:16px;padding:2px">✕</button></div>
+  `;
+  list.appendChild(row);
+}
+async function saveCatFields(){
+  const catId=document.getElementById('cfp-cat-select').value;
+  if(!catId){toast('Select a category','warn');return;}
+  const rows=document.getElementById('cfp-fields-list').children;
+  const fields=[];
+  for(const row of rows){
+    const inputs=row.querySelectorAll('input[type="text"],input:not([type]),input[type="number"]');
+    const label=(inputs[0]?.value||'').trim();
+    if(!label)continue;
+    const key=label.toLowerCase().replace(/[^a-z0-9]+/g,'_');
+    const ph=(inputs[1]?.value||'').trim();
+    const type=row.querySelector('select')?.value||'text';
+    const req=row.querySelector('input[type=checkbox]')?.checked?1:0;
+    fields.push({field_label:label,field_key:key,placeholder:ph,field_type:type,required:req});
+  }
+  const res=await api('/api/category/fields/save',{category_id:parseInt(catId),fields});
+  if(res.ok)toast('Fields saved ✓','ok');
+  else toast(res.msg||'Error','err');
+}
+async function changeOwnPw(){
+  const old=document.getElementById('pw-old').value;
+  const nw=document.getElementById('pw-new').value;
+  if(!old||!nw){toast('Fill in both fields','warn');return}
+  const res=await api('/api/change_password',{old_password:old,new_password:nw});
+  if(res.ok){toast('Password updated ✓','ok');document.getElementById('pw-old').value='';document.getElementById('pw-new').value='';}
+  else toast(res.msg||'Error','err');
+}
+function openModal(id){document.getElementById(id).classList.add('open')}
+function closeModal(id){document.getElementById(id).classList.remove('open')}
+// Modals only close via the ✕ button
+</script>
+{% endblock %}

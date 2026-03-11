@@ -1,0 +1,288 @@
+{% extends "base.html" %}
+{% block title %}Products · Storelax{% endblock %}
+{% block content %}
+<div class="topbar">
+  <span class="topbar-title">Products</span>
+  <span class="topbar-sub" id="prod-count"></span>
+  <div style="position:relative;flex:1;max-width:340px;margin-left:8px">
+    <svg style="position:absolute;left:10px;top:50%;transform:translateY(-50%);width:14px;height:14px;color:#aaa" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+    <input id="prodSearch" class="input" style="padding-left:30px" placeholder="Search products…" oninput="loadProdsDebounced()">
+  </div>
+  <div class="topbar-right">
+    <select id="prodCatFilter" class="select" style="width:auto;min-width:140px" onchange="loadProds()">
+      <option value="">All Categories</option>
+      {% for cat in categories %}<option value="{{ cat.id }}">{{ cat.name }}</option>{% endfor %}
+    </select>
+    <button class="btn btn-primary btn-sm" onclick="openAddProduct()">+ New Product</button>
+  </div>
+</div>
+
+<div style="flex:1;overflow-y:auto;padding:20px 22px">
+  <div id="prod-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px"></div>
+</div>
+
+<!-- ══ ADD/EDIT PRODUCT MODAL ══ -->
+<div class="overlay" id="productModal">
+  <div class="modal" style="width:560px;max-height:90vh">
+    <div class="modal-header">
+      <div class="modal-title" id="prodModalTitle">New Product</div>
+      <button class="modal-close" onclick="closeModal('productModal')">✕</button>
+    </div>
+    <div class="modal-body" style="overflow-y:auto;max-height:calc(90vh - 120px)">
+      <input type="hidden" id="edit-prod-id">
+
+      <!-- Step 1: Category picker (shows first) -->
+      <div id="prod-step1">
+        <div style="background:#f8f9ff;border:1px solid #dbeafe;border-radius:8px;padding:14px 16px;margin-bottom:16px;font-size:13px;color:#1e40af">
+          👇 Start by selecting a category — required fields will appear automatically
+        </div>
+        <div class="field">
+          <label class="label">Category *</label>
+          <select class="select" id="prod-cat" onchange="onProdCatChange()">
+            <option value="">— Pick a category —</option>
+            {% for cat in categories %}<option value="{{ cat.id }}" data-name="{{ cat.name }}">{{ cat.name }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <!-- Step 2: Fields (hidden until category picked) -->
+      <div id="prod-step2" style="display:none">
+        <!-- Common fields always shown -->
+        <div style="font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#94a3b8;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #f0efec" id="prod-cat-label"></div>
+        <div class="field"><label class="label">Product Name *</label><input class="input" id="prod-name" placeholder="e.g. Ubiquiti UniFi AP AC Pro"></div>
+        <div class="field-row">
+          <div class="field"><label class="label">Manufacturer *</label><input class="input" id="prod-mfr" placeholder="e.g. Ubiquiti, Cisco, Dell"></div>
+          <div class="field"><label class="label">Model / Part #</label><input class="input" id="prod-model" placeholder="e.g. UAP-AC-PRO"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label class="label">Default Cost</label><input class="input" id="prod-cost" type="number" step="0.01" placeholder="0.00"></div>
+          <div class="field"><label class="label">Default Sale Price</label><input class="input" id="prod-sale" type="number" step="0.01" placeholder="0.00"></div>
+        </div>
+
+        <!-- Category-specific fields injected here -->
+        <div id="prod-cat-fields"></div>
+
+        <div class="field"><label class="label">Description / Notes</label><textarea class="input" id="prod-desc" style="min-height:56px;resize:vertical" placeholder="Optional notes about this product"></textarea></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('productModal')">Cancel</button>
+      <button class="btn btn-danger" id="deleteProdBtn" style="display:none;margin-right:auto" onclick="deleteProduct()">Delete</button>
+      <button class="btn btn-primary" id="saveProdBtn" style="display:none" onclick="saveProduct()">Save Product</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ USE PRODUCT MODAL (Add to Inventory from catalog) ══ -->
+<div class="overlay" id="useProductModal">
+  <div class="modal" style="width:400px">
+    <div class="modal-header">
+      <div class="modal-title">Add to Inventory</div>
+      <button class="modal-close" onclick="closeModal('useProductModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="background:#f8f8f7;border-radius:7px;padding:12px 14px;margin-bottom:14px">
+        <div style="font-weight:600;font-size:13px" id="use-prod-name">—</div>
+        <div style="font-size:11.5px;color:#888;margin-top:2px" id="use-prod-meta">—</div>
+      </div>
+      <p style="font-size:13px;color:#555;margin-bottom:12px">This will create a new inventory item pre-filled with this product's details. You can complete remaining fields after.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('useProductModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="useProdInInventory()">➕ Add to Inventory</button>
+    </div>
+  </div>
+</div>
+
+<style>
+.prod-card{background:#fff;border:1px solid #e5e3de;border-radius:10px;overflow:hidden;display:flex;flex-direction:column;transition:box-shadow .15s,border-color .15s;cursor:pointer}
+.prod-card:hover{box-shadow:0 4px 16px rgba(0,0,0,.08);border-color:#bbb}
+.prod-card-hdr{padding:14px 16px 10px;border-bottom:1px solid #f5f4f1}
+.prod-card-name{font-weight:600;font-size:13.5px;line-height:1.3;margin-bottom:3px}
+.prod-card-meta{font-size:11.5px;color:#888}
+.prod-card-body{padding:12px 16px;flex:1}
+.prod-card-foot{padding:10px 16px;border-top:1px solid #f5f4f1;display:flex;gap:8px;justify-content:flex-end}
+.cat-chip{display:inline-flex;align-items:center;font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:4px;background:#f0f0ee;color:#555}
+</style>
+<script>
+const CATEGORIES = {{ categories | tojson }};
+const PTYPES     = {{ product_types | tojson }};
+let allProds=[], pendingUseProdId=null, debProd=null;
+
+// ── Category field profiles ──────────────────────────────────────────────────
+// Use server-defined category fields
+const CATEGORY_FIELDS = {{ category_fields | tojson }};
+
+function getCatProfile(catId) {
+  return (CATEGORY_FIELDS[String(catId)])||[];
+}
+
+function onProdCatChange() {
+  const sel = document.getElementById('prod-cat');
+  const catId = sel.value;
+  const catName = sel.options[sel.selectedIndex]?.dataset.name || '';
+  if (!catId) { document.getElementById('prod-step2').style.display='none'; document.getElementById('saveProdBtn').style.display='none'; return; }
+
+  document.getElementById('prod-cat-label').textContent = '📦 ' + catName + ' — Fields';
+  document.getElementById('prod-step2').style.display = '';
+  document.getElementById('saveProdBtn').style.display = '';
+
+  const fields = getCatProfile(catId);
+  const container = document.getElementById('prod-cat-fields');
+  if (!fields.length) { container.innerHTML=''; return; }
+
+  const pairs = [], singles = [];
+  fields.forEach(f => {
+    const eid = 'prod-dyn-' + f.field_key;
+    const reqMark = f.required ? ' *' : '';
+    if (f.field_type === 'checkbox') {
+      singles.push(`<div class="field"><label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:13px"><input type="checkbox" id="${eid}" style="width:15px;height:15px"> ${f.field_label}</label></div>`);
+    } else {
+      pairs.push(`<div class="field"><label class="label">${f.field_label}${reqMark}</label><input class="input" id="${eid}" placeholder="${f.placeholder||''}" ${f.field_type==='number'?'type="number"':''}></div>`);
+    }
+  });
+  let html = '';
+  for (let i=0; i<pairs.length; i+=2) {
+    html += pairs[i+1] ? `<div class="field-row">${pairs[i]}${pairs[i+1]}</div>` : pairs[i];
+  }
+  singles.forEach(s => html += s);
+  container.innerHTML = html;
+}
+
+// ── Load products ────────────────────────────────────────────────────────────
+function loadProdsDebounced(){clearTimeout(debProd);debProd=setTimeout(loadProds,300)}
+async function loadProds() {
+  const q   = document.getElementById('prodSearch').value;
+  const cat = document.getElementById('prodCatFilter').value;
+  const params = new URLSearchParams({q,cat});
+  const prods = await fetch('/api/catalog?'+params).then(r=>r.json());
+  allProds = prods;
+  document.getElementById('prod-count').textContent = prods.length + ' product' + (prods.length===1?'':'s');
+  const grid = document.getElementById('prod-grid');
+  if (!prods.length) {
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:60px;color:#aaa"><div style="font-size:32px;margin-bottom:12px">📦</div><div style="font-size:15px;font-weight:600">No products yet</div><div style="font-size:13px;margin-top:4px">Click "+ New Product" to add one</div></div>`;
+    return;
+  }
+  grid.innerHTML = prods.map(p => `
+    <div class="prod-card" onclick="editProduct(${p.id})">
+      <div class="prod-card-hdr">
+        <div class="prod-card-name">${p.name}</div>
+        <div class="prod-card-meta">${[p.manufacturer,p.model].filter(Boolean).join(' · ')}</div>
+      </div>
+      <div class="prod-card-body">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+          <span class="cat-chip">${p.category||'—'}</span>
+          ${p.product_type?`<span class="cat-chip" style="background:#eff6ff;color:#1d4ed8">${p.product_type}</span>`:''}
+        </div>
+        ${p.description?`<div style="font-size:12px;color:#888;line-height:1.5">${p.description.slice(0,80)}${p.description.length>80?'…':''}</div>`:''}
+        ${p.default_cost!=null?`<div style="font-size:12px;color:#555;margin-top:6px">Cost: <strong>$${parseFloat(p.default_cost).toFixed(2)}</strong>${p.default_sale!=null?' · Sale: <strong>$'+parseFloat(p.default_sale).toFixed(2)+'</strong>':''}</div>`:''}
+      </div>
+      <div class="prod-card-foot">
+        <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();openUseProduct(${p.id})">➕ Add to Inventory</button>
+        <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();editProduct(${p.id})">Edit</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ── Open Add / Edit ──────────────────────────────────────────────────────────
+function openAddProduct() {
+  document.getElementById('edit-prod-id').value = '';
+  document.getElementById('prodModalTitle').textContent = 'New Product';
+  document.getElementById('prod-cat').value = '';
+  document.getElementById('prod-step2').style.display = 'none';
+  document.getElementById('saveProdBtn').style.display = 'none';
+  document.getElementById('deleteProdBtn').style.display = 'none';
+  ['prod-name','prod-mfr','prod-model','prod-cost','prod-sale','prod-desc'].forEach(id => document.getElementById(id).value='');
+  document.getElementById('prod-cat-fields').innerHTML = '';
+  openModal('productModal');
+}
+
+function editProduct(id) {
+  const p = allProds.find(x=>x.id===id);
+  if (!p) return;
+  document.getElementById('edit-prod-id').value = id;
+  document.getElementById('prodModalTitle').textContent = 'Edit Product';
+  document.getElementById('deleteProdBtn').style.display = '';
+
+  // Set category first to trigger field render
+  const sel = document.getElementById('prod-cat');
+  sel.value = p.category_id || '';
+  onProdCatChange();
+
+  // Fill fields after profile renders
+  setTimeout(() => {
+    document.getElementById('prod-name').value = p.name||'';
+    document.getElementById('prod-mfr').value  = p.manufacturer||'';
+    document.getElementById('prod-model').value = p.model||'';
+    document.getElementById('prod-cost').value = p.default_cost!=null?p.default_cost:'';
+    document.getElementById('prod-sale').value = p.default_sale!=null?p.default_sale:'';
+    document.getElementById('prod-desc').value = p.description||'';
+  }, 50);
+  openModal('productModal');
+}
+
+async function saveProduct() {
+  const name = document.getElementById('prod-name').value.trim();
+  const cat  = document.getElementById('prod-cat').value;
+  if (!cat)  { toast('Please select a category','warn'); return; }
+  if (!name) { toast('Product name required','warn'); return; }
+
+  // Validate required fields per profile
+  const catFieldDefs = getCatProfile(cat);
+  for (const f of catFieldDefs) {
+    if (f.required && f.field_type !== 'checkbox') {
+      const el = document.getElementById('prod-dyn-' + f.field_key);
+      if (el && !el.value.trim()) { toast(f.field_label + ' is required for this category','warn'); el.focus(); return; }
+    }
+  }
+
+  const id = document.getElementById('edit-prod-id').value;
+  const payload = {
+    name, category_id: parseInt(cat)||null,
+    manufacturer: document.getElementById('prod-mfr').value.trim()||null,
+    model: document.getElementById('prod-model').value.trim()||null,
+    default_cost: document.getElementById('prod-cost').value||null,
+    default_sale: document.getElementById('prod-sale').value||null,
+    description: document.getElementById('prod-desc').value.trim()||null,
+  };
+  if (id) payload.id = parseInt(id);
+
+  const url = id ? '/api/catalog/edit' : '/api/catalog/add';
+  const res = await fetch(url, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}).then(r=>r.json());
+  if (res.ok) { toast(id?'Product updated ✓':'Product added ✓','ok'); closeModal('productModal'); loadProds(); }
+  else toast(res.msg||'Error','err');
+}
+
+async function deleteProduct() {
+  const id = document.getElementById('edit-prod-id').value;
+  if (!id || !confirm('Delete this product from the catalog?')) return;
+  const res = await fetch('/api/catalog/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:parseInt(id)})}).then(r=>r.json());
+  if (res.ok) { toast('Deleted','warn'); closeModal('productModal'); loadProds(); }
+  else toast(res.msg||'Error','err');
+}
+
+// ── Use in Inventory ────────────────────────────────────────────────────────
+function openUseProduct(id) {
+  const p = allProds.find(x=>x.id===id);
+  if (!p) return;
+  pendingUseProdId = id;
+  document.getElementById('use-prod-name').textContent = p.name;
+  document.getElementById('use-prod-meta').textContent = [p.manufacturer,p.model,p.category].filter(Boolean).join(' · ');
+  openModal('useProductModal');
+}
+async function useProdInInventory() {
+  const res = await fetch('/api/catalog/to_item',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:pendingUseProdId})}).then(r=>r.json());
+  if (res.ok) { toast('Item created in inventory ✓ — go to Inventory to complete it','ok'); closeModal('useProductModal'); }
+  else toast(res.msg||'Error','err');
+}
+
+// ── Modal backdrop lock ──────────────────────────────────────────────────────
+// Modals only close via the ✕ button — not by clicking outside
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+// Intentionally NO overlay click-to-close here
+
+loadProds();
+</script>
+{% endblock %}
