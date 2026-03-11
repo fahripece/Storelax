@@ -1,0 +1,2 @@
+# Storelax
+Inventory Made Easy
