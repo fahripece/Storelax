@@ -4,129 +4,88 @@ A lightweight, self-hosted inventory management system for IT teams. No cloud re
 
 ![Python](https://img.shields.io/badge/Python-3.8%2B-blue) ![Flask](https://img.shields.io/badge/Flask-2%2B-lightgrey) ![SQLite](https://img.shields.io/badge/Database-SQLite-green) ![License](https://img.shields.io/badge/License-MIT-yellow)
 
----
+## 🚀 Features
 
-## Features
-
-- **Asset tracking** — Serialized items with check out / check in (name & job reference)
-- **Quantity tracking** — Consumables with add / remove / set stock levels
-- **Barcode scanner support** — USB HID scanners work out of the box (press F2)
-- **Audit log** — Every action is permanently recorded and cannot be edited
-- **Categories** — Color-coded, fully customizable
-- **Shelf locations** — Numeric shelf assignments per item
-- **Search & filter** — By name, serial, model, SKU, shelf, category, or status
-- **No database server** — Uses SQLite, zero infrastructure needed
-- **No authentication** — Designed for trusted internal networks
+* **Asset & Quantity Tracking:** Track serialized assets (Check Out/In) or consumables (Stock Levels).
+* **Smart Hardware Specs:** Fields for CPU, RAM, and Storage auto-appear for "PC" or "Server" categories.
+* **Dual-User Auth:** Built-in Admin (full control) and Worker (check-in/out only) roles.
+* **Barcode Scanner Support:** USB HID scanners work out of the box (Press F2).
+* **Financials & Tax:** Track Unit Cost vs. Sale Price with live profit margin calculations.
+* **Low Stock Alerts:** Visual red-row alerts and a live navigation badge for reordering.
+* **Audit Log:** Every action is permanently recorded with technician names.
+* **No Infrastructure:** Uses SQLite (one file). Zero database server setup required.
 
 ---
 
-## Quick Start
+## 📦 Quick Start
 
-```bash
-# 1. Clone the repo
-git clone https://github.com/yourusername/storelax.git
-cd storelax
+1. Setup and Run
+   $ git clone https://github.com/yourusername/storelax.git
+   $ cd storelax
+   $ pip install flask openpyxl
+   $ python app.py
 
-# 2. Install dependencies
-pip install flask
-
-# 3. Run
-python app.py
-```
-
-Open **http://localhost:5000** in your browser.  
-To access from other machines on the network: `http://<this-pc-ip>:5000`
+2. Access Storelax
+   Open your browser to http://localhost:5000
+   * Default Admin: admin / admin123
+   * Default Worker: worker / worker123
 
 ---
 
-## Customizing the Demo Data
-
-On first run, the app creates two default users and five default product types. No categories or items are seeded — it starts completely empty so you can build your own inventory from scratch.  
-To pre-load items before first run (optional):
-
-1. Delete `inventory.db` (recreated automatically on next run)
-2. Edit the `CATEGORIES` and `ITEMS` lists near the top of `app.py`
-3. Restart — the new data seeds automatically
-
-Or skip seeding entirely and add everything through the UI.
-
-### Item format
-
-```python
-ITEMS = [
-    # (name, model, serial, sku, category, shelf, qty)
-
-    # Serialized asset — tracked individually, checked out/in:
-    ("LAPTOP", "ThinkPad-X1", "SN123456", None, "Workstations", 2, None),
-
-    # Consumable — tracked by quantity, not by serial:
-    ("CAT6 PATCH 6FT", "CAT6-6", None, "C-001", "Consumables", 5, 50),
-]
-```
-
-- `serial="..."` + `qty=None` → serialized asset (checkout / checkin)
-- `serial=None` + `qty=integer` → consumable (quantity tracked)
-
----
-
-## Keyboard Shortcuts
+## ⌨️ Keyboard Shortcuts & Scanner
 
 | Key | Action |
-|-----|--------|
-| `F2` | Toggle barcode scanner bar |
-| `/` | Focus search |
-| `Esc` | Close modals / scanner |
+| :--- | :--- |
+| F2 | Toggle Barcode Scanner bar / Focus search |
+| Esc | Close modals or scanner bar |
+
+**Scanner Modes:**
+* Look Up: Find an item by serial, model, or SKU.
+* Check Out: Scan to check out; prompts for name and job reference.
+* Check In: Scan to return an item instantly.
 
 ---
 
-## Scanner Modes
+## 📋 Item & Logic Schema
 
-Press **F2** to open the scan bar. Three modes:
-
-- **Look Up** — Find an item by serial, model, or SKU
-- **Check Out** — Scan to check out; prompts for name and job reference
-- **Check In** — Scan to return an item
-
-Any USB HID barcode scanner (the default for most scanners) works without configuration.
+Storelax uses logic-based fields to keep the UI clean:
+* Serialized Asset: Serial = Required + Qty = None.
+* Consumable: Serial = None + Qty = Integer.
+* Tax Mandate: Save button remains disabled until "Tax Paid" (Yes/No) is selected.
+* Owner Validation: Triggers a confirmation pop-up if an Owner is assigned to a record.
 
 ---
 
-## Project Structure
+## 🛠️ Deployment (Production)
 
-```
-storelax/
-├── app.py              # Flask app — all routes, DB logic, seed data
-├── inventory.db        # SQLite database (auto-created, gitignored)
-├── README.md
-└── templates/
-    ├── base.html       # Sidebar, nav, shared styles
-    ├── inventory.html  # Main inventory view
-    └── audit.html      # Audit log view
-```
+For a permanent office install (e.g., Raspberry Pi or Windows Server):
+$ pip install flask gunicorn
+$ gunicorn -w 2 -b 0.0.0.0:5000 "app:app"
 
 ---
 
-## Deploying on a Local Server
+## ⚖️ License
 
-For a more permanent install (e.g. a Raspberry Pi or office PC):
+**Personal & Internal Use Only.**
 
-```bash
-pip install flask gunicorn
-gunicorn -w 2 -b 0.0.0.0:5000 "app:app"
-```
+Storelax is free to use for personal projects, internal business operations, and non-commercial IT environments. 
+* Prohibited: You may not commercialize this software, sell it as a service (SaaS), or include it in paid distributions without explicit permission from the author.
 
-Use a systemd service or `screen` session to keep it running after logout.
+---
+*Developed for IT Directors and Service Managers who value efficiency.*
 
 ---
 
-## Security Notes
+## 📂 Configuration Files
 
-- This app has **no authentication**. It is intended for use on a trusted internal LAN.
-- To expose it beyond your network, put it behind a reverse proxy (nginx / Caddy) with HTTP Basic Auth or your own login system.
-- The audit log is append-only and cannot be modified through the UI.
+### .gitignore
+__pycache__/
+*.py[cod]
+inventory.db
+.env
+venv/
+.DS_Store
 
----
-
-## License
-
-MIT — do whatever you want with it.
+### requirements.txt
+Flask==3.0.0
+openpyxl==3.1.2
