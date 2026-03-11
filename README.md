@@ -68,7 +68,7 @@ $ gunicorn -w 2 -b 0.0.0.0:5000 "app:app"
 
 **Personal & Internal Use Only.**
 
-Storelax is free to use for personal projects, internal business operations, and non-commercial IT environments. 
+Storelax is free to use for personal projects, internal business operations, and IT environments. 
 * Prohibited: You may not commercialize this software, sell it as a service (SaaS), or include it in paid distributions without explicit permission from the author.
 
 ---
